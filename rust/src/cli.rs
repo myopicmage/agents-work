@@ -24,6 +24,20 @@ pub struct Cli {
 /// Supported `agents-work` operations.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Create a new inert shared-work case.
+    Init {
+        /// Case directory to create.
+        case: PathBuf,
+
+        /// Canonical repository directory associated with the case.
+        #[arg(long)]
+        repository: PathBuf,
+
+        /// Human-readable case title.
+        #[arg(long)]
+        title: String,
+    },
+
     /// Validate one or more shared-work cases.
     Validate {
         /// Case directories to validate.

@@ -5,6 +5,7 @@ mod case;
 pub mod cli;
 pub mod cursor;
 pub mod draft;
+pub mod init;
 pub mod manifest;
 pub mod publish;
 pub mod validate;

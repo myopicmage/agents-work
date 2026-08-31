@@ -694,6 +694,56 @@ def render_manifest(manifest: dict[str, Any]) -> str:
     return "\n\n".join("\n".join(group) for group in groups) + "\n"
 
 
+def init_case(case: Path, repository: Path, title: str) -> Path:
+    case = case.expanduser().resolve()
+    repository = repository.expanduser().resolve()
+
+    if not repository.is_dir():
+        raise ValidationFailure(f"{repository}: repository is not a directory")
+
+    case_id = case.name
+    if not SLUG_PATTERN.fullmatch(case_id):
+        raise ValidationFailure(f"{case}: case name must be a lowercase slug")
+
+    if not title:
+        raise ValidationFailure("title must not be empty")
+
+    case.mkdir(parents=True, exist_ok=True)
+    manifest_path = case / "work.toml"
+    timestamp = dt.datetime.now().astimezone().replace(microsecond=0).isoformat()
+    manifest = {
+        "schema_version": 2,
+        "id": case_id,
+        "title": title,
+        "repository_name": repository.name,
+        "repository_path": str(repository),
+        "phase": "planning",
+        "status": "deferred",
+        "next_agent": "",
+        "requested_action": "",
+        "implementation_branch": "",
+        "pull_request_system": "",
+        "pull_request_id": "",
+        "reviewed_commit": "",
+        "created_at": timestamp,
+        "updated_at": timestamp,
+    }
+    rendered = render_manifest(manifest)
+
+    try:
+        with manifest_path.open("x", encoding="utf-8") as output:
+            os.fchmod(output.fileno(), 0o644)
+            output.write(rendered)
+            output.flush()
+            os.fsync(output.fileno())
+    except FileExistsError as error:
+        raise ValidationFailure(f"{manifest_path}: already exists") from error
+
+    fsync_directory(case)
+    print(manifest_path)
+    return manifest_path
+
+
 def cursor(case: Path, updates: dict[str, str]) -> Path:
     """Move the coordination cursor, refusing to write an illegal one.
 
@@ -792,6 +842,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    init_parser = subparsers.add_parser(
+        "init", help="Create a new inert shared-work case"
+    )
+    init_parser.add_argument("case", type=Path)
+    init_parser.add_argument("--repository", required=True, type=Path)
+    init_parser.add_argument("--title", required=True)
+
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("case", nargs="+", type=Path)
 
@@ -864,6 +921,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
+        if args.command == "init":
+            init_case(args.case, args.repository, args.title)
+            return 0
+
         if args.command == "validate":
             results = [validate_case(case) for case in args.case]
             return 0 if all(results) else 1

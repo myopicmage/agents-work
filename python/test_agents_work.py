@@ -89,6 +89,45 @@ class AgentsWorkTests(unittest.TestCase):
         draft.write_text(text or artifact_text(), encoding="utf-8")
         return draft
 
+    def test_init_creates_an_inert_schema_two_case(self) -> None:
+        case = self.root / "new-case"
+        repository = self.root / "repository"
+        repository.mkdir()
+
+        manifest_path = agents_work.init_case(case, repository, "New case")
+        manifest = agents_work.tomllib.loads(
+            manifest_path.read_text(encoding="utf-8")
+        )
+
+        self.assertEqual("new-case", manifest["id"])
+        self.assertEqual("repository", manifest["repository_name"])
+        self.assertEqual(str(repository.resolve()), manifest["repository_path"])
+        self.assertEqual("planning", manifest["phase"])
+        self.assertEqual("deferred", manifest["status"])
+        self.assertEqual("", manifest["next_agent"])
+        self.assertEqual("", manifest["requested_action"])
+        self.assertEqual(manifest["created_at"], manifest["updated_at"])
+        self.assertTrue(agents_work.validate_case(case))
+
+    def test_init_refuses_to_replace_an_existing_manifest(self) -> None:
+        repository = self.root / "repository"
+        repository.mkdir()
+
+        with self.assertRaises(agents_work.ValidationFailure) as raised:
+            agents_work.init_case(self.case, repository, "Replacement")
+
+        self.assertIn("work.toml: already exists", str(raised.exception))
+        self.assertEqual(manifest_text(), (self.case / "work.toml").read_text())
+
+    def test_init_requires_a_slug_case_name(self) -> None:
+        repository = self.root / "repository"
+        repository.mkdir()
+
+        with self.assertRaises(agents_work.ValidationFailure) as raised:
+            agents_work.init_case(self.root / "Not A Slug", repository, "Case")
+
+        self.assertIn("case name must be a lowercase slug", str(raised.exception))
+
     def test_publish_then_validate(self) -> None:
         published = agents_work.publish(self.case, self.prepare())
 

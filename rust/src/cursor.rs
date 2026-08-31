@@ -328,7 +328,7 @@ fn invalid_manifest(path: &Path, error: &io::Error) -> CursorError {
     CursorError::validation(format!("{}: invalid work.toml: {error}", path.display()))
 }
 
-fn current_local_timestamp() -> Result<String, CursorError> {
+pub(crate) fn current_local_timestamp() -> Result<String, CursorError> {
     let current = time::OffsetDateTime::now_local().map_err(CursorError::LocalOffset)?;
     let offset = current.offset();
     let (offset_hours, offset_minutes, offset_seconds) = offset.as_hms();
@@ -392,7 +392,7 @@ fn is_python_two(value: &Value) -> bool {
     matches!(value, Value::Integer(2)) || matches!(value, Value::Float(value) if *value == 2.0)
 }
 
-fn render_manifest(manifest: &Table) -> Result<String, CursorError> {
+pub(crate) fn render_manifest(manifest: &Table) -> Result<String, CursorError> {
     let field_groups: [&[&str]; 5] = [
         &["schema_version", "id", "title"],
         &["repository_name", "repository_path"],

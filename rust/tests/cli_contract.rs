@@ -24,7 +24,7 @@ fn command_and_value_vocabularies_match_python() {
         .map(|command| command.get_name().to_owned())
         .collect::<Vec<_>>();
 
-    assert_eq!(commands, ["validate", "draft", "publish", "cursor"]);
+    assert_eq!(commands, ["init", "validate", "draft", "publish", "cursor"]);
     assert_eq!(
         value_names::<KindArgument>(),
         ["decision", "plan", "proposal", "response", "review"]

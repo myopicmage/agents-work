@@ -1,9 +1,11 @@
 use std::io::{self, Write};
+use std::path::Path;
 use std::process::ExitCode;
 
 use agents_work::cli::{Cli, Command};
 use agents_work::cursor::{CursorRequest, CursorUpdates, cursor};
 use agents_work::draft::{DraftRequest, draft};
+use agents_work::init::{InitRequest, init};
 use agents_work::publish::publish;
 use agents_work::validate::validate_cases;
 use clap::Parser;
@@ -12,6 +14,11 @@ fn main() -> ExitCode {
     let invocation = Cli::parse();
 
     match invocation.command {
+        Command::Init {
+            case,
+            repository,
+            title,
+        } => run_init(&case, &repository, &title),
         Command::Validate { case } => {
             let mut standard_output = io::stdout().lock();
             let mut standard_error = io::stderr().lock();
@@ -103,6 +110,24 @@ fn main() -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
+        }
+    }
+}
+
+fn run_init(case: &Path, repository: &Path, title: &str) -> ExitCode {
+    let mut standard_output = io::stdout().lock();
+    let mut standard_error = io::stderr().lock();
+    let request = InitRequest {
+        case,
+        repository,
+        title,
+    };
+
+    match init(request, &mut standard_output) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(error) => {
+            let _ = writeln!(standard_error, "error: {error}");
+            ExitCode::FAILURE
         }
     }
 }

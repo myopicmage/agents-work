@@ -171,8 +171,16 @@ Each collaboration gets a case directory beneath a repository name:
         └── work.toml
 ```
 
-Start `work.toml` from [examples/work.toml](examples/work.toml), replacing
-the repository path and coordination fields with real values.
+Create a case with `init`:
+
+```sh
+agents-work init /path/to/workspace/example-project/auth-redesign \
+  --repository /absolute/path/to/example-project \
+  --title "Authentication redesign"
+```
+
+The new case starts deferred, with no agent authorized to act. The
+[example manifest](examples/work.toml) remains available as a schema reference.
 
 The complete data model, lifecycle, concurrency rules, and safety boundaries
 are in [PROTOCOL.md](PROTOCOL.md).
