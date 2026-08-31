@@ -12,6 +12,23 @@
         "x86_64-linux"
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      source = builtins.path {
+        path = ./.;
+        name = "agents-work-source";
+        filter =
+          path: type:
+          let
+            name = builtins.baseNameOf path;
+          in
+          !builtins.elem name [
+            ".direnv"
+            ".git"
+            "__pycache__"
+            "result"
+            "target"
+          ]
+          && builtins.match ".*[.]pyc" name == null;
+      };
     in
     {
       packages = forAllSystems (
@@ -28,7 +45,7 @@
           rustPackage = pkgs.rustPlatform.buildRustPackage {
             pname = "agents-work";
             version = "0.1.0";
-            src = ./rust;
+            src = "${source}/rust";
 
             cargoLock.lockFile = ./rust/Cargo.lock;
 
@@ -48,6 +65,21 @@
           pkgs = import nixpkgs { inherit system; };
         in
         {
+          install-tests = pkgs.runCommand "agents-work-install-tests" {
+            nativeBuildInputs = [
+              pkgs.coreutils
+              pkgs.python3
+            ];
+          } ''
+            cp -R ${source} ./source
+            chmod -R u+w ./source
+            cd ./source
+            export HOME="$TMPDIR/home"
+            mkdir -p "$HOME"
+            ./tests/install_test.sh --implementation python
+            touch "$out"
+          '';
+
           python-tests = pkgs.runCommand "agents-work-python-tests" {
             nativeBuildInputs = [ pkgs.python3 ];
           } ''
@@ -58,6 +90,17 @@
           '';
 
           rust = self.packages.${system}.rust;
+
+          shell-scripts = pkgs.runCommand "agents-work-shell-scripts" {
+            nativeBuildInputs = [ pkgs.shellcheck ];
+          } ''
+            shellcheck \
+              ${./install.sh} \
+              ${./uninstall.sh} \
+              ${./scripts/check} \
+              ${./tests/install_test.sh}
+            touch "$out"
+          '';
         }
       );
 
@@ -75,6 +118,7 @@
               pkgs.rust-analyzer
               pkgs.rustc
               pkgs.rustfmt
+              pkgs.shellcheck
             ];
 
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";

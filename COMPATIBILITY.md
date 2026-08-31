@@ -38,4 +38,4 @@ AGENTS_WORK_PYTHON_REFERENCE="$PWD/python/agents_work.py" \
   cargo test --manifest-path rust/Cargo.toml --locked -- --ignored
 ```
 
-The tests never read or mutate a live `~/.agents/work` directory.
+The tests never read or mutate a configured live workspace.

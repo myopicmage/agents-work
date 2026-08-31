@@ -1,7 +1,8 @@
 # Shared Agent Work
 
-This directory holds collaboration artifacts that should survive agent and Git
-branch changes without becoming product documentation prematurely.
+The configured workspace holds collaboration artifacts that should survive
+agent and Git branch changes without becoming product documentation
+prematurely.
 
 It is a shared notebook, not an orchestrator. Agents do not poll it, launch one
 another, or infer work merely because a file exists. A human coordinator
@@ -10,8 +11,7 @@ supplies notification, such as "your coworker dropped a review."
 ## Layout
 
 ```text
-~/.agents/work/
-├── README.md
+<workspace>/
 └── <repository-name>/
     └── <work-id>/
         ├── work.toml
@@ -19,6 +19,12 @@ supplies notification, such as "your coworker dropped a review."
         ├── 001-<topic>-<author>-<artifact-id>.md.sha256
         └── ...
 ```
+
+The installer records the workspace in
+`${XDG_CONFIG_HOME:-$HOME/.config}/agents-work/config.toml` by default. The
+workspace itself defaults to
+`${XDG_DATA_HOME:-$HOME/.local/share}/agents-work`. Both locations are
+configurable during installation.
 
 `repository-name` is the actual canonical repository folder name. It must not
 come from a temporary or linked worktree name.

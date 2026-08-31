@@ -2,10 +2,12 @@
 
 set -eu
 
+shellcheck install.sh uninstall.sh scripts/check tests/install_test.sh
 python3 -m unittest discover -s python -p 'test_*.py'
 cargo fmt --manifest-path rust/Cargo.toml --check
 cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path rust/Cargo.toml --locked
 AGENTS_WORK_PYTHON_REFERENCE="$PWD/python/agents_work.py" \
   cargo test --manifest-path rust/Cargo.toml --locked -- --ignored
+./tests/install_test.sh --implementation all
 nix flake check 'path:.'

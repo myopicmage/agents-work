@@ -16,7 +16,7 @@ protocol change deliberately updates both.
 - Do not add a service, database, daemon, scheduler, network dependency, issue
   tracker, or plugin framework without an explicit design decision.
 - Do not treat an artifact or cursor value as authorization to act.
-- Never run mutating tests against a live `~/.agents/work` tree. Use isolated
+- Never run mutating tests against a configured live workspace. Use isolated
   temporary fixtures.
 
 ## Compatibility
@@ -31,9 +31,10 @@ protocol change deliberately updates both.
 
 ## Verification
 
-Run the Python tests, Rust formatting, strict Clippy, ordinary Rust tests,
-ignored differential tests, and `nix flake check 'path:.'` before calling a
-change complete. Keep `flake.lock` and `rust/Cargo.lock` committed.
+Run `./scripts/check` before calling a change complete. It covers the Python
+tests, Rust formatting, strict Clippy, ordinary Rust tests, differential tests,
+shell scripts, isolated install and uninstall scenarios, and Nix checks. Keep
+`flake.lock` and `rust/Cargo.lock` committed.
 
 ## Version control
 
