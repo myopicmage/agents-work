@@ -1,0 +1,40 @@
+[package]
+name = "agents-work"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Native Rust implementation of the agents-work protocol"
+publish = false
+
+[[bin]]
+name = "agents-work"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.6", default-features = false, features = [
+  "derive",
+  "error-context",
+  "help",
+  "std",
+  "usage",
+] }
+getrandom = { version = "0.4.3", default-features = false }
+regex = { version = "1.13.1", default-features = false, features = ["std"] }
+sha2 = { version = "0.11.0", default-features = false }
+time = { version = "0.3.55", default-features = false, features = [
+  "local-offset",
+] }
+toml = { version = "1.1.4", default-features = false, features = [
+  "parse",
+  "preserve_order",
+  "serde",
+  "std",
+] }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }

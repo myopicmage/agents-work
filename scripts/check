@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+set -eu
+
+python3 -m unittest discover -s python -p 'test_*.py'
+cargo fmt --manifest-path rust/Cargo.toml --check
+cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path rust/Cargo.toml --locked
+AGENTS_WORK_PYTHON_REFERENCE="$PWD/python/agents_work.py" \
+  cargo test --manifest-path rust/Cargo.toml --locked -- --ignored
+nix flake check 'path:.'
