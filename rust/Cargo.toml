@@ -38,3 +38,10 @@ warnings = "deny"
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+
+# Xcode 27's strip writes proc-macro dylibs that dyld refuses to load
+# ("mis-aligned LINKEDIT string pool"), which rustc then reports as E0463 for
+# clap_derive. Release builds strip by default, so leave compile-time
+# artifacts unstripped. The shipped binary is unaffected and still stripped.
+[profile.release.build-override]
+strip = "none"
