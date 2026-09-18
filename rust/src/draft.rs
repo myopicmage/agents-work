@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::artifact::{
     ArtifactId, ArtifactKind, ArtifactMetadata, ArtifactName, OffsetDateTime, Sequence, Slug,
-    parse_front_matter,
+    TITLE_PLACEHOLDER, parse_front_matter,
 };
 use crate::case::{create_new_file, discovered_artifacts, path_error, read_manifest, resolve_path};
 
@@ -94,7 +94,7 @@ impl DraftDocument {
             subject_commit: String::new(),
         };
         let filename = metadata.filename();
-        let body = format!("{}\n# TITLE\n", render_front_matter(&metadata));
+        let body = format!("{}\n{TITLE_PLACEHOLDER}\n", render_front_matter(&metadata));
         prove_generated_document(&filename, &body, &metadata)?;
 
         Ok(Self { filename, body })

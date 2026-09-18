@@ -200,11 +200,43 @@ class AgentsWorkTests(unittest.TestCase):
 
         self.assertFalse(agents_work.validate_case(self.case))
 
+    def title_draft(self, drafted: Path) -> Path:
+        text = drafted.read_text(encoding="utf-8")
+        drafted.write_text(text.replace("# TITLE\n", "# Review\n"), encoding="utf-8")
+        return drafted
+
     def test_draft_is_publishable_without_editing_front_matter(self) -> None:
         drafted = agents_work.draft(self.case, kind="review", author="claude")
-        published = agents_work.publish(self.case, drafted)
+        published = agents_work.publish(self.case, self.title_draft(drafted))
 
         self.assertTrue(published.name.startswith("001-test-case-claude-"))
+        self.assertTrue(agents_work.validate_case(self.case))
+
+    def test_publish_refuses_the_untouched_title_placeholder(self) -> None:
+        drafted = agents_work.draft(self.case, kind="review", author="claude")
+        drafted.write_text(
+            drafted.read_text(encoding="utf-8") + "\n# Real title\n\nBody.\n",
+            encoding="utf-8",
+        )
+        before = sorted(path.name for path in self.case.iterdir())
+
+        with self.assertRaises(agents_work.ValidationFailure) as raised:
+            agents_work.publish(self.case, drafted)
+
+        self.assertEqual(
+            f"{drafted.name}: body still contains the draft placeholder line "
+            "'# TITLE'; replace it with the artifact's title",
+            str(raised.exception),
+        )
+        self.assertEqual(before, sorted(path.name for path in self.case.iterdir()))
+
+    def test_publish_accepts_a_title_that_only_mentions_the_placeholder(self) -> None:
+        text = artifact_text().replace(
+            "# Test artifact\n", "# TITLE placeholder bug\n\nSee `# TITLE`.\n"
+        )
+
+        agents_work.publish(self.case, self.prepare(text))
+
         self.assertTrue(agents_work.validate_case(self.case))
 
     def test_draft_sequence_follows_the_existing_inventory(self) -> None:

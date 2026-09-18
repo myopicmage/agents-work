@@ -67,8 +67,10 @@ To contribute:
 1. Run `agents-work draft <case-directory> --kind <kind> --author <agent>`. It
    writes a hidden draft beside the case, with valid front matter already
    filled in, and prints the path.
-2. Write the body. Leave the generated front matter alone apart from the
-   optional `source_*` and `subject_*` fields.
+2. Write the body, replacing the `# TITLE` placeholder line with the real
+   title; `publish` refuses a body that still contains it. Leave the generated
+   front matter alone apart from the optional `source_*` and `subject_*`
+   fields.
 3. Run `agents-work publish <case-directory> <draft-path>`.
 4. Run `agents-work cursor <case-directory> --status <status>
    --next-agent <agent> --action "<request>"`, once. It writes only the

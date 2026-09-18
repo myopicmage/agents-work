@@ -55,8 +55,10 @@ Contribute only when the user actually requests work.
 
 1. Run `agents-work draft <case-directory> --kind <kind> --author <agent>`,
    adding `--responds-to` or `--supersedes` for artifacts actually considered.
-2. Edit the generated body. Leave generated front matter unchanged except for
-   relevant optional `source_*` and `subject_*` fields.
+2. Edit the generated body, replacing the `# TITLE` placeholder line rather
+   than writing below it; `publish` refuses a body that still contains it.
+   Leave generated front matter unchanged except for relevant optional
+   `source_*` and `subject_*` fields.
 3. Run `agents-work publish <case-directory> <draft-path>` once.
 4. Run `agents-work cursor` once with the resulting status, next agent, and
    requested action. When handing off a code review, also set

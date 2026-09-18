@@ -397,6 +397,8 @@ fn publish_failure_diagnostics_match_the_python_reference() {
         FailureScenario::MissingSequence,
         FailureScenario::MistypedSequence,
         FailureScenario::MissingRelationship,
+        FailureScenario::TitlePlaceholder,
+        FailureScenario::MissingRelationshipAndTitlePlaceholder,
         FailureScenario::ExistingFinal,
         FailureScenario::ExistingSidecar,
     ] {
@@ -453,6 +455,8 @@ enum FailureScenario {
     MissingSequence,
     MistypedSequence,
     MissingRelationship,
+    TitlePlaceholder,
+    MissingRelationshipAndTitlePlaceholder,
     ExistingFinal,
     ExistingSidecar,
 }
@@ -490,6 +494,10 @@ fn prepare_failure(fixture: &TemporaryCase, scenario: FailureScenario) -> PathBu
             artifact(&[]).replace("sequence = 1", "sequence = \"1\"")
         }
         FailureScenario::MissingRelationship => artifact(&["001-missing-codex-a1b2c3.md"]),
+        FailureScenario::TitlePlaceholder => with_title_placeholder(&artifact(&[])),
+        FailureScenario::MissingRelationshipAndTitlePlaceholder => {
+            with_title_placeholder(&artifact(&["001-missing-codex-a1b2c3.md"]))
+        }
         _ => artifact(&[]),
     };
     let draft = fixture.root.join("draft.md");
@@ -516,6 +524,13 @@ fn prepare_failure(fixture: &TemporaryCase, scenario: FailureScenario) -> PathBu
     }
 
     draft
+}
+
+fn with_title_placeholder(text: &str) -> String {
+    text.replace(
+        "+++\n# Test artifact\n",
+        "+++\n\n# TITLE\n\n# Test artifact\n",
+    )
 }
 
 fn run_python_publish(case: &Path, draft: &Path) -> Output {

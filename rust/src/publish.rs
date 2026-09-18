@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 
 use toml::Table;
 
-use crate::artifact::{ArtifactKind, ArtifactMetadata, Slug, parse_front_matter};
+use crate::artifact::{
+    ArtifactKind, ArtifactMetadata, Slug, TITLE_PLACEHOLDER, front_matter_body,
+    has_title_placeholder, parse_front_matter,
+};
 use crate::case::{
     create_new_file, discovered_artifacts, path_error, remove_if_exists, resolve_path,
     set_file_mode, sync_directory,
@@ -160,6 +163,15 @@ fn validate_prepared_artifact(draft: &Path, case: &Path) -> Result<ArtifactMetad
                 ));
             }
         }
+    }
+
+    // Front matter parsed above, so the delimiters are known to be present.
+    if front_matter_body(&data).is_some_and(has_title_placeholder) {
+        errors.push(format!(
+            "{}: body still contains the draft placeholder line \
+             '{TITLE_PLACEHOLDER}'; replace it with the artifact's title",
+            file_name(draft)
+        ));
     }
 
     if !errors.is_empty() {

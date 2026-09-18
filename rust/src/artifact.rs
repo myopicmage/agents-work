@@ -521,6 +521,36 @@ impl Display for ValidationErrors {
 
 impl Error for ValidationErrors {}
 
+/// The heading `draft` writes as the body's first line. Publishing refuses a
+/// body that still carries it verbatim, so an unedited skeleton heading cannot
+/// reach the append-only record.
+pub const TITLE_PLACEHOLDER: &str = "# TITLE";
+
+const FRONT_MATTER_OPENING: &[u8] = b"+++\n";
+const FRONT_MATTER_CLOSING: &[u8] = b"\n+++\n";
+
+/// Returns the Markdown after the front matter's closing delimiter, or `None`
+/// when the delimiters that [`parse_front_matter`] requires are absent.
+#[must_use]
+pub fn front_matter_body(data: &[u8]) -> Option<&[u8]> {
+    let remainder = data.strip_prefix(FRONT_MATTER_OPENING)?;
+    let end = front_matter_end(remainder)?;
+    Some(&remainder[end + FRONT_MATTER_CLOSING.len()..])
+}
+
+/// Reports whether a body still has the skeleton's placeholder as a whole line.
+#[must_use]
+pub fn has_title_placeholder(body: &[u8]) -> bool {
+    body.split(|byte| *byte == b'\n')
+        .any(|line| line == TITLE_PLACEHOLDER.as_bytes())
+}
+
+fn front_matter_end(remainder: &[u8]) -> Option<usize> {
+    remainder
+        .windows(FRONT_MATTER_CLOSING.len())
+        .position(|window| window == FRONT_MATTER_CLOSING)
+}
+
 /// Extracts and parses the leading TOML front matter from an artifact.
 ///
 /// # Errors
@@ -528,22 +558,16 @@ impl Error for ValidationErrors {}
 /// Returns a source-labelled error if the exact delimiters, UTF-8, or TOML are
 /// invalid.
 pub fn parse_front_matter(data: &[u8], source: &Path) -> Result<Table, FrontMatterError> {
-    const OPENING: &[u8] = b"+++\n";
-    const CLOSING: &[u8] = b"\n+++\n";
-
     let source = source_label(source);
 
-    if !data.starts_with(OPENING) {
+    if !data.starts_with(FRONT_MATTER_OPENING) {
         return Err(FrontMatterError(format!(
             "{source}: missing TOML front matter"
         )));
     }
 
-    let remainder = &data[OPENING.len()..];
-    let Some(end) = remainder
-        .windows(CLOSING.len())
-        .position(|window| window == CLOSING)
-    else {
+    let remainder = &data[FRONT_MATTER_OPENING.len()..];
+    let Some(end) = front_matter_end(remainder) else {
         return Err(FrontMatterError(format!(
             "{source}: unterminated TOML front matter"
         )));

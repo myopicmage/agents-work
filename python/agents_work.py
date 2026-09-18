@@ -58,6 +58,11 @@ OPTIONAL_FIELD_ORDER = (
 )
 OPTIONAL_STRING_FIELDS = frozenset(OPTIONAL_FIELD_ORDER)
 
+# The heading `draft` writes as the body's first line. Publishing refuses a
+# body that still carries it verbatim, so an unedited skeleton heading cannot
+# reach the append-only record.
+TITLE_PLACEHOLDER = b"# TITLE"
+
 
 class ValidationFailure(Exception):
     pass
@@ -67,14 +72,21 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+FRONT_MATTER_OPENING = b"+++\n"
+FRONT_MATTER_CLOSING = b"\n+++\n"
+
+
+def front_matter_end(data: bytes) -> int:
+    return data.find(FRONT_MATTER_CLOSING, len(FRONT_MATTER_OPENING))
+
+
 def parse_front_matter(data: bytes, source: Path) -> dict[str, Any]:
-    opening = b"+++\n"
-    closing = b"\n+++\n"
+    opening = FRONT_MATTER_OPENING
 
     if not data.startswith(opening):
         raise ValidationFailure(f"{source.name}: missing TOML front matter")
 
-    end = data.find(closing, len(opening))
+    end = front_matter_end(data)
     if end < 0:
         raise ValidationFailure(f"{source.name}: unterminated TOML front matter")
 
@@ -388,6 +400,13 @@ def validate_prepared_artifact(draft: Path, case: Path) -> dict[str, Any]:
             if target not in discovered:
                 errors.append(f"{draft.name}: {relationship} target missing: {target}")
 
+    body = data[front_matter_end(data) + len(FRONT_MATTER_CLOSING) :]
+    if TITLE_PLACEHOLDER in body.split(b"\n"):
+        errors.append(
+            f"{draft.name}: body still contains the draft placeholder line "
+            f"'{TITLE_PLACEHOLDER.decode()}'; replace it with the artifact's title"
+        )
+
     if errors:
         raise ValidationFailure("\n".join(errors))
 
@@ -529,7 +548,7 @@ def draft(
     if errors:
         raise ValidationFailure("\n".join(errors))
 
-    body = f"{render_front_matter(metadata)}\n# TITLE\n"
+    body = f"{render_front_matter(metadata)}\n{TITLE_PLACEHOLDER.decode()}\n"
     descriptor = os.open(
         draft_path,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL,
