@@ -64,18 +64,7 @@ fn main() -> ExitCode {
         Command::Publish {
             case,
             draft: draft_path,
-        } => {
-            let mut standard_output = io::stdout().lock();
-            let mut standard_error = io::stderr().lock();
-
-            match publish(&case, &draft_path, &mut standard_output) {
-                Ok(_) => ExitCode::SUCCESS,
-                Err(error) => {
-                    let _ = writeln!(standard_error, "error: {error}");
-                    ExitCode::FAILURE
-                }
-            }
-        }
+        } => run_publish(&case, &draft_path),
         Command::Cursor {
             case,
             phase,
@@ -110,6 +99,19 @@ fn main() -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
+        }
+    }
+}
+
+fn run_publish(case: &Path, draft_path: &Path) -> ExitCode {
+    let mut standard_output = io::stdout().lock();
+    let mut standard_error = io::stderr().lock();
+
+    match publish(case, draft_path, &mut standard_output, &mut standard_error) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(error) => {
+            let _ = writeln!(standard_error, "error: {error}");
+            ExitCode::FAILURE
         }
     }
 }

@@ -58,6 +58,15 @@ OPTIONAL_FIELD_ORDER = (
 )
 OPTIONAL_STRING_FIELDS = frozenset(OPTIONAL_FIELD_ORDER)
 
+# The heading `draft` writes as the body's first line. Publishing refuses a
+# body that still carries it verbatim, so an unedited skeleton heading cannot
+# reach the append-only record.
+TITLE_PLACEHOLDER = b"# TITLE"
+
+# The prefix `draft` puts on its default output. Publishing removes a draft
+# only when it carries this shape, so a file the author named is never deleted.
+DRAFT_PREFIX = ".draft-"
+
 
 class ValidationFailure(Exception):
     pass
@@ -67,14 +76,21 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+FRONT_MATTER_OPENING = b"+++\n"
+FRONT_MATTER_CLOSING = b"\n+++\n"
+
+
+def front_matter_end(data: bytes) -> int:
+    return data.find(FRONT_MATTER_CLOSING, len(FRONT_MATTER_OPENING))
+
+
 def parse_front_matter(data: bytes, source: Path) -> dict[str, Any]:
-    opening = b"+++\n"
-    closing = b"\n+++\n"
+    opening = FRONT_MATTER_OPENING
 
     if not data.startswith(opening):
         raise ValidationFailure(f"{source.name}: missing TOML front matter")
 
-    end = data.find(closing, len(opening))
+    end = front_matter_end(data)
     if end < 0:
         raise ValidationFailure(f"{source.name}: unterminated TOML front matter")
 
@@ -388,6 +404,13 @@ def validate_prepared_artifact(draft: Path, case: Path) -> dict[str, Any]:
             if target not in discovered:
                 errors.append(f"{draft.name}: {relationship} target missing: {target}")
 
+    body = data[front_matter_end(data) + len(FRONT_MATTER_CLOSING) :]
+    if TITLE_PLACEHOLDER in body.split(b"\n"):
+        errors.append(
+            f"{draft.name}: body still contains the draft placeholder line "
+            f"'{TITLE_PLACEHOLDER.decode()}'; replace it with the artifact's title"
+        )
+
     if errors:
         raise ValidationFailure("\n".join(errors))
 
@@ -473,6 +496,38 @@ def render_front_matter(metadata: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+INHERITED_TOPIC_HINT = (
+    "hint: without --topic, draft inherits the topic the referenced artifacts "
+    "share; pass --topic to choose one"
+)
+
+
+def inherited_topic(case: Path, references: list[str]) -> str | None:
+    """Return the one topic every referenced artifact shares, if there is one.
+
+    A response usually continues its target's thread, so its filename should
+    carry the same topic. Several distinct topics, or none, give no answer and
+    the caller falls back to the case ID.
+    """
+    topics = set()
+    for name in references:
+        path = case / name
+        try:
+            metadata = parse_front_matter(path.read_bytes(), path)
+        except ValidationFailure as error:
+            raise ValidationFailure(f"{error}\n{INHERITED_TOPIC_HINT}") from error
+
+        topic = metadata.get("topic")
+        if not isinstance(topic, str) or not SLUG_PATTERN.fullmatch(topic):
+            raise ValidationFailure(
+                f"{name}: topic must be a lowercase slug\n{INHERITED_TOPIC_HINT}"
+            )
+
+        topics.add(topic)
+
+    return topics.pop() if len(topics) == 1 else None
+
+
 def draft(
     case: Path,
     *,
@@ -489,7 +544,20 @@ def draft(
     if manifest is None:
         raise ValidationFailure(f"{case}: missing or unreadable work.toml")
 
-    resolved_topic = topic if topic is not None else manifest.get("id")
+    resolved_responds_to = [
+        resolve_reference(reference, case) for reference in responds_to or []
+    ]
+    resolved_supersedes = [
+        resolve_reference(reference, case) for reference in supersedes or []
+    ]
+
+    resolved_topic = topic
+    if resolved_topic is None:
+        resolved_topic = inherited_topic(
+            case, resolved_responds_to + resolved_supersedes
+        )
+    if resolved_topic is None:
+        resolved_topic = manifest.get("id")
     if not isinstance(resolved_topic, str) or not SLUG_PATTERN.fullmatch(
         resolved_topic
     ):
@@ -506,13 +574,8 @@ def draft(
         "topic": resolved_topic,
         "author": author,
         "created_at": dt.datetime.now().astimezone().replace(microsecond=0),
-        "responds_to": [
-            resolve_reference(reference, case)
-            for reference in responds_to or []
-        ],
-        "supersedes": [
-            resolve_reference(reference, case) for reference in supersedes or []
-        ],
+        "responds_to": resolved_responds_to,
+        "supersedes": resolved_supersedes,
     }
     metadata.update({field: "" for field in OPTIONAL_FIELD_ORDER})
 
@@ -520,7 +583,7 @@ def draft(
     draft_path = (
         output.expanduser().resolve()
         if output is not None
-        else case / f".draft-{filename}"
+        else case / f"{DRAFT_PREFIX}{filename}"
     )
 
     # Prove the skeleton is publishable before writing it, so a draft can only
@@ -529,7 +592,7 @@ def draft(
     if errors:
         raise ValidationFailure("\n".join(errors))
 
-    body = f"{render_front_matter(metadata)}\n# TITLE\n"
+    body = f"{render_front_matter(metadata)}\n{TITLE_PLACEHOLDER.decode()}\n"
     descriptor = os.open(
         draft_path,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL,
@@ -548,6 +611,34 @@ def fsync_directory(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def is_generated_draft(draft: Path, case: Path, artifact_id: str) -> bool:
+    """Recognize the file `draft` wrote by default for this artifact.
+
+    The topic in the name may differ from the published one, because authors
+    edit it after drafting; the artifact ID is what ties the two together.
+    """
+    if draft.parent != case or not draft.name.startswith(DRAFT_PREFIX):
+        return False
+
+    match = ARTIFACT_PATTERN.fullmatch(draft.name[len(DRAFT_PREFIX) :])
+    return match is not None and match.group("artifact_id") == artifact_id
+
+
+def remove_generated_draft(draft: Path, case: Path) -> None:
+    # The artifact is already durable, so a failure here is a warning rather
+    # than an error: reporting failure would invite a retry that can only hit
+    # no-clobber.
+    try:
+        draft.unlink(missing_ok=True)
+        fsync_directory(case)
+    except OSError as error:
+        print(
+            f"warning: {draft}: published, but the draft was not removed: "
+            f"{error.strerror}",
+            file=sys.stderr,
+        )
 
 
 def publish(case: Path, draft: Path) -> Path:
@@ -609,6 +700,9 @@ def publish(case: Path, draft: Path) -> Path:
             raise
     finally:
         temporary_path.unlink(missing_ok=True)
+
+    if is_generated_draft(draft, case, metadata["artifact_id"]):
+        remove_generated_draft(draft, case)
 
     print(final_path)
     return final_path
@@ -861,7 +955,9 @@ def build_parser() -> argparse.ArgumentParser:
     draft_parser.add_argument("--kind", required=True, choices=sorted(KINDS))
     draft_parser.add_argument("--author", required=True)
     draft_parser.add_argument(
-        "--topic", help="defaults to the work.toml id"
+        "--topic",
+        help="defaults to the one topic the referenced artifacts share, "
+        "otherwise the work.toml id",
     )
     # `extend`, so a repeated flag accumulates. The default action with
     # `nargs="*"` silently keeps only the last occurrence, which discards a

@@ -21,6 +21,22 @@ an additive resting status: existing cases stay valid, but binaries built
 before it reject it, so update every participating installation before any
 case uses it.
 
+`draft` without `--topic` inherits the one topic its `--responds-to` and
+`--supersedes` targets share, falling back to the case ID as before. An
+explicit `--topic`, or a draft with no references, behaves exactly as before.
+Both implementations now resolve references before the topic, so when both
+are invalid the reference error is the one reported. A binary built before
+this change keeps using the case ID; drafts from mixed installations differ
+only in filename, and every resulting artifact is valid.
+
+## Publish tightening
+
+Publishing refuses a body that still contains the `draft` skeleton's `# TITLE`
+line, and removes a draft that `draft` generated once the artifact is durable.
+Both implementations changed together. A binary built before this change still
+accepts the placeholder and leaves drafts behind; neither affects existing
+cases, which stay valid.
+
 ## Intentional difference
 
 Python renders strings through `json.dumps`. For a non-BMP character such as

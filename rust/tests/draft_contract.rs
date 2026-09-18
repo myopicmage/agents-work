@@ -34,7 +34,16 @@ impl TemporaryCase {
     }
 
     fn write_artifact(&self, name: &str) {
-        fs::write(self.case.join(name), "fixture\n").expect("artifact should be written");
+        self.write_artifact_with_topic(name, "fixture");
+    }
+
+    /// Writes only the front matter `draft` reads from a reference: its topic.
+    fn write_artifact_with_topic(&self, name: &str, topic: &str) {
+        fs::write(
+            self.case.join(name),
+            format!("+++\ntopic = \"{topic}\"\n+++\n"),
+        )
+        .expect("artifact should be written");
     }
 
     fn resolved(&self) -> PathBuf {
@@ -112,7 +121,7 @@ fn explicit_time_and_id_render_exact_python_bytes() {
         &mut standard_output,
     )
     .expect("deterministic draft should be written");
-    let expected_name = ".draft-002-test-case-claude-a1b2c3.md";
+    let expected_name = ".draft-002-fixture-claude-a1b2c3.md";
     let expected_path = fixture.resolved().join(expected_name);
 
     assert_eq!(drafted, expected_path);
@@ -128,7 +137,7 @@ artifact_schema_version = 1
 artifact_id = "a1b2c3"
 sequence = 2
 kind = "review"
-topic = "test-case"
+topic = "fixture"
 author = "claude"
 created_at = 2026-08-09T18:30:45+09:00
 responds_to = [
@@ -318,6 +327,36 @@ fn topic_override_bypasses_an_unusable_manifest_id() {
     assert_eq!(
         drafted.file_name().and_then(OsStr::to_str),
         Some(".draft-001-explicit-topic-claude-a1b2c3.md")
+    );
+}
+
+#[test]
+fn mixed_reference_topics_fall_back_to_the_case_id() {
+    let fixture = TemporaryCase::new("mixed-topics");
+    fixture.write_manifest(&manifest("test-case"));
+    fixture.write_artifact_with_topic("001-alpha-plan-codex-010203.md", "alpha");
+    fixture.write_artifact_with_topic("002-beta-review-claude-040506.md", "beta");
+    let responds_to = vec!["1".to_owned()];
+    let supersedes = vec!["2".to_owned()];
+
+    let drafted = draft_with(
+        request(
+            &fixture.case,
+            "claude",
+            None,
+            &responds_to,
+            &supersedes,
+            None,
+        ),
+        || Ok(timestamp()),
+        || Ok(artifact_id("a1b2c3")),
+        &mut Vec::new(),
+    )
+    .expect("mixed topics should still draft");
+
+    assert_eq!(
+        drafted.file_name().and_then(OsStr::to_str),
+        Some(".draft-003-test-case-claude-a1b2c3.md")
     );
 }
 
@@ -592,6 +631,30 @@ fn draft_failure_diagnostics_match_the_python_reference() {
         reference.as_os_str(),
         &unicode_zero.case,
         &[OsStr::new("--responds-to"), OsStr::new("\u{116D0}")],
+    );
+
+    let bare_target = TemporaryCase::new("oracle-bare-target");
+    bare_target.write_manifest(&manifest("test-case"));
+    fs::write(
+        bare_target.case.join("001-bare-plan-codex-a1b2c3.md"),
+        "bare\n",
+    )
+    .expect("bare target should be written");
+    assert_draft_failure_parity(
+        python.as_os_str(),
+        reference.as_os_str(),
+        &bare_target.case,
+        &[OsStr::new("--responds-to"), OsStr::new("1")],
+    );
+
+    let bad_topic = TemporaryCase::new("oracle-bad-target-topic");
+    bad_topic.write_manifest(&manifest("test-case"));
+    bad_topic.write_artifact_with_topic("001-bad-plan-codex-a1b2c3.md", "Not Slug");
+    assert_draft_failure_parity(
+        python.as_os_str(),
+        reference.as_os_str(),
+        &bad_topic.case,
+        &[OsStr::new("--responds-to"), OsStr::new("1")],
     );
 
     let ambiguous = TemporaryCase::new("oracle-ambiguous-reference");

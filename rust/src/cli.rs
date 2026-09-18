@@ -58,7 +58,8 @@ pub enum Command {
         #[arg(long)]
         author: String,
 
-        /// Artifact topic slug, defaulting to the work.toml id.
+        /// Artifact topic slug, defaulting to the one topic the referenced
+        /// artifacts share, otherwise the work.toml id.
         #[arg(long)]
         topic: Option<String>,
 

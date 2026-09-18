@@ -67,8 +67,10 @@ To contribute:
 1. Run `agents-work draft <case-directory> --kind <kind> --author <agent>`. It
    writes a hidden draft beside the case, with valid front matter already
    filled in, and prints the path.
-2. Write the body. Leave the generated front matter alone apart from the
-   optional `source_*` and `subject_*` fields.
+2. Write the body, replacing the `# TITLE` placeholder line with the real
+   title; `publish` refuses a body that still contains it. Leave the generated
+   front matter alone apart from the optional `source_*` and `subject_*`
+   fields.
 3. Run `agents-work publish <case-directory> <draft-path>`.
 4. Run `agents-work cursor <case-directory> --status <status>
    --next-agent <agent> --action "<request>"`, once. It writes only the
@@ -82,6 +84,13 @@ bare sequence number, and may be repeated or given several values at once. A
 sequence number that matches more than one artifact is an error rather than a
 guess, because concurrent writers may legally share one.
 
+Without `--topic`, the draft inherits the topic when every artifact it
+responds to or supersedes shares exactly one, since a response usually
+continues its target's thread. Otherwise, including when it references
+nothing, the topic is the case ID. Pass `--topic` whenever the artifact starts
+a new thread; it also skips reading the referenced artifacts, so a malformed
+target cannot block the draft.
+
 Hand-writing the front matter still works, under any temporary name that does
 not match the discovery pattern. `draft` exists because the sequence, the
 artifact ID, the timestamp and the exact field set are all constraints stated
@@ -93,6 +102,14 @@ The publishing command verifies the front matter, writes the integrity
 sidecar, and publishes the Markdown last. Publication is no-clobber. It
 generates no replacement content and never overwrites an existing artifact or
 sidecar.
+
+Once the artifact and sidecar are durable, publishing removes the draft if
+`draft` generated it: a `.draft-` file directly in the case directory whose
+name is a valid artifact filename carrying the published artifact ID. The
+topic in that name may differ, since authors edit it after drafting. Any other
+draft path, including an `--output` path or a hand-named file, is left alone.
+Failing to remove the draft prints a warning and still exits successfully,
+because the artifact is already committed.
 
 Artifacts are append-only. Never edit or replace another agent's artifact. A
 revised plan is a new artifact that names what it supersedes, not an overwrite.
