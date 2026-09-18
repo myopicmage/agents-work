@@ -31,7 +31,7 @@ ACTIVE_STATUSES = frozenset(
     {"drafting", "awaiting_review", "revision_requested"}
 )
 RESTING_STATUSES = frozenset(
-    {"ready_for_implementation", "deferred", "complete"}
+    {"ready_for_implementation", "awaiting_decision", "deferred", "complete"}
 )
 STATUSES = ACTIVE_STATUSES | RESTING_STATUSES
 
@@ -783,8 +783,9 @@ def cursor(case: Path, updates: dict[str, str]) -> Path:
     merged.update(updates)
 
     # A resting status is a gate, not permission to act. Moving to one without
-    # an explicit owner clears stale ownership. ready_for_implementation and
-    # deferred may keep an explicitly named resumption owner; complete may not.
+    # an explicit owner clears stale ownership. ready_for_implementation,
+    # awaiting_decision and deferred may keep an explicitly named resumption
+    # owner; complete may not.
     status = merged.get("status")
     if status in RESTING_STATUSES and "next_agent" not in updates:
         merged["next_agent"] = ""

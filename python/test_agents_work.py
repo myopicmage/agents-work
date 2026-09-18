@@ -344,6 +344,47 @@ class AgentsWorkTests(unittest.TestCase):
         self.assertEqual("codex", manifest["next_agent"])
         self.assertTrue(agents_work.validate_case(self.case))
 
+    def test_awaiting_decision_rests_in_every_open_phase(self) -> None:
+        for phase in ("planning", "implementation", "pr_review"):
+            with self.subTest(phase=phase):
+                agents_work.cursor(
+                    self.case,
+                    {
+                        "phase": phase,
+                        "status": "awaiting_decision",
+                        "next_agent": "codex",
+                    },
+                )
+                # A later update that omits the owner clears it, as for
+                # every other resting status.
+                agents_work.cursor(
+                    self.case, {"requested_action": "Decide whether to merge."}
+                )
+
+                manifest = self.read_manifest()
+                self.assertEqual(phase, manifest["phase"])
+                self.assertEqual("awaiting_decision", manifest["status"])
+                self.assertEqual("", manifest["next_agent"])
+                self.assertTrue(agents_work.validate_case(self.case))
+
+    def test_cursor_records_an_awaiting_decision_resumption_owner(self) -> None:
+        agents_work.cursor(
+            self.case,
+            {"status": "awaiting_decision", "next_agent": "codex"},
+        )
+
+        manifest = self.read_manifest()
+        self.assertEqual("awaiting_decision", manifest["status"])
+        self.assertEqual("codex", manifest["next_agent"])
+        self.assertTrue(agents_work.validate_case(self.case))
+
+    def test_cursor_rejects_awaiting_decision_in_the_complete_phase(self) -> None:
+        with self.assertRaises(agents_work.ValidationFailure):
+            agents_work.cursor(
+                self.case,
+                {"phase": "complete", "status": "awaiting_decision"},
+            )
+
     def test_cursor_rejects_a_complete_status_with_an_agent(self) -> None:
         with self.assertRaises(agents_work.ValidationFailure):
             agents_work.cursor(
