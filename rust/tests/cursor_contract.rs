@@ -208,6 +208,10 @@ fn resting_status_without_an_explicit_owner_clears_stale_ownership() {
             ..CursorUpdates::default()
         },
         CursorUpdates {
+            status: Some(Status::AwaitingDecision),
+            ..CursorUpdates::default()
+        },
+        CursorUpdates {
             requested_action: Some("Park this."),
             ..CursorUpdates::default()
         },
@@ -244,6 +248,27 @@ fn resting_status_keeps_an_explicit_resumption_owner() {
     .expect("resting cursor may name an explicit owner");
 
     assert_eq!(document.manifest()["next_agent"].as_str(), Some("claude"));
+}
+
+#[test]
+fn awaiting_decision_keeps_an_explicit_resumption_owner() {
+    let document = CursorDocument::build(
+        manifest("drafting", "codex"),
+        CursorUpdates {
+            status: Some(Status::AwaitingDecision),
+            next_agent: Some("codex"),
+            ..CursorUpdates::default()
+        },
+        timestamp(),
+        "work.toml",
+    )
+    .expect("awaiting_decision may name an explicit owner");
+
+    assert_eq!(
+        document.manifest()["status"].as_str(),
+        Some("awaiting_decision")
+    );
+    assert_eq!(document.manifest()["next_agent"].as_str(), Some("codex"));
 }
 
 #[test]

@@ -8,7 +8,7 @@ use toml::{Table, Value};
 
 const PHASES: &str = "complete, implementation, planning, pr_review";
 const STATUSES: &str = concat!(
-    "awaiting_review, complete, deferred, drafting, ",
+    "awaiting_decision, awaiting_review, complete, deferred, drafting, ",
     "ready_for_implementation, revision_requested"
 );
 const LEGACY_FIELDS: [&str; 3] = ["latest_sequence", "latest_artifacts", "artifacts"];
@@ -69,6 +69,7 @@ impl Error for InvalidPhase {}
 /// A coordination status accepted by the Python implementation.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Status {
+    AwaitingDecision,
     AwaitingReview,
     Complete,
     Deferred,
@@ -92,7 +93,7 @@ impl Status {
     pub fn is_resting(self) -> bool {
         matches!(
             self,
-            Self::Complete | Self::Deferred | Self::ReadyForImplementation
+            Self::AwaitingDecision | Self::Complete | Self::Deferred | Self::ReadyForImplementation
         )
     }
 }
@@ -102,6 +103,7 @@ impl FromStr for Status {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
+            "awaiting_decision" => Ok(Self::AwaitingDecision),
             "awaiting_review" => Ok(Self::AwaitingReview),
             "complete" => Ok(Self::Complete),
             "deferred" => Ok(Self::Deferred),
@@ -116,6 +118,7 @@ impl FromStr for Status {
 impl Display for Status {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::AwaitingDecision => "awaiting_decision",
             Self::AwaitingReview => "awaiting_review",
             Self::Complete => "complete",
             Self::Deferred => "deferred",

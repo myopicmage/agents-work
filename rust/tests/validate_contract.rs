@@ -635,6 +635,7 @@ fn coordination_matrix_matches_the_python_reference() {
         "awaiting_review",
         "revision_requested",
         "ready_for_implementation",
+        "awaiting_decision",
         "deferred",
         "complete",
     ];
