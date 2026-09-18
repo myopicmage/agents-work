@@ -59,7 +59,32 @@ Contribute only when the user actually requests work.
    relevant optional `source_*` and `subject_*` fields.
 3. Run `agents-work publish <case-directory> <draft-path>` once.
 4. Run `agents-work cursor` once with the resulting status, next agent, and
-   requested action.
+   requested action. When handing off a code review, also set
+   `--implementation-branch` to the local branch name.
+
+To stop at a human gate, pick the resting status by the decision actually
+pending: `ready_for_implementation` when the human has settled the direction
+and only a go remains; `awaiting_decision` when the human is still choosing,
+including whether to pursue agreed work at all, with `--action` naming the
+decision; `deferred` when parked. None authorizes action.
+
+## Review code
+
+Review the tip of the cursor's `implementation_branch`, captured once at the
+start. Use a lookup that only matches a local branch, because a bare
+`rev-parse` resolves a same-named tag instead:
+
+```sh
+commit=$(git -C "$repository_path" rev-parse --verify \
+  "refs/heads/${implementation_branch}^{commit}") || exit 1
+```
+
+If the branch is unset or does not resolve, ask; never fall back to `HEAD`.
+Review that commit's committed tree and diff. Put the captured value, never a
+retyped one, in the review's `subject_commit` and in
+`agents-work cursor --reviewed-commit "$commit"`. A remote push does not move
+local refs: for a remote pull request, update the local branch deliberately
+before capturing.
 
 Artifacts are append-only. Never edit or replace another author's artifact.
 Record a changed decision as a new decision artifact that supersedes the old

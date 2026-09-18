@@ -14,6 +14,13 @@ The differential suite runs both commands against isolated copies of the same
 fixtures. It normalizes only paths, timestamps, and random artifact IDs before
 comparing observable results.
 
+## Grammar additions
+
+Grammar changes land in both implementations together. `awaiting_decision` is
+an additive resting status: existing cases stay valid, but binaries built
+before it reject it, so update every participating installation before any
+case uses it.
+
 ## Intentional difference
 
 Python renders strings through `json.dumps`. For a non-BMP character such as

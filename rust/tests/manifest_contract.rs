@@ -39,7 +39,7 @@ next_agent = 7
         errors,
         [
             "work.toml: phase must be one of complete, implementation, planning, pr_review",
-            "work.toml: status must be one of awaiting_review, complete, deferred, drafting, ready_for_implementation, revision_requested",
+            "work.toml: status must be one of awaiting_decision, awaiting_review, complete, deferred, drafting, ready_for_implementation, revision_requested",
             "work.toml: next_agent must be a string",
         ]
     );

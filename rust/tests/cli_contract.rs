@@ -36,6 +36,7 @@ fn command_and_value_vocabularies_match_python() {
     assert_eq!(
         value_names::<StatusArgument>(),
         [
+            "awaiting_decision",
             "awaiting_review",
             "complete",
             "deferred",

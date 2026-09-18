@@ -179,6 +179,8 @@ impl From<PhaseArgument> for Phase {
 /// Coordination status accepted by the current Python CLI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub enum StatusArgument {
+    #[value(name = "awaiting_decision")]
+    AwaitingDecision,
     #[value(name = "awaiting_review")]
     AwaitingReview,
     Complete,
@@ -193,6 +195,7 @@ pub enum StatusArgument {
 impl From<StatusArgument> for Status {
     fn from(value: StatusArgument) -> Self {
         match value {
+            StatusArgument::AwaitingDecision => Self::AwaitingDecision,
             StatusArgument::AwaitingReview => Self::AwaitingReview,
             StatusArgument::Complete => Self::Complete,
             StatusArgument::Deferred => Self::Deferred,
