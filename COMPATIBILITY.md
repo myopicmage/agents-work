@@ -21,6 +21,14 @@ an additive resting status: existing cases stay valid, but binaries built
 before it reject it, so update every participating installation before any
 case uses it.
 
+## Publish tightening
+
+Publishing refuses a body that still contains the `draft` skeleton's `# TITLE`
+line, and removes a draft that `draft` generated once the artifact is durable.
+Both implementations changed together. A binary built before this change still
+accepts the placeholder and leaves drafts behind; neither affects existing
+cases, which stay valid.
+
 ## Intentional difference
 
 Python renders strings through `json.dumps`. For a non-BMP character such as

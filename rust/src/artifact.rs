@@ -526,6 +526,24 @@ impl Error for ValidationErrors {}
 /// reach the append-only record.
 pub const TITLE_PLACEHOLDER: &str = "# TITLE";
 
+/// The prefix `draft` puts on its default output. Publishing removes a draft
+/// only when it carries this shape, so a file the author named is never
+/// deleted.
+pub const DRAFT_PREFIX: &str = ".draft-";
+
+/// Returns the artifact ID in a filename `draft` generates by default.
+///
+/// The topic in the name may differ from the published one, because authors
+/// edit it after drafting; the artifact ID is what ties the two together.
+#[must_use]
+pub fn generated_draft_id(file_name: &str) -> Option<ArtifactId> {
+    let name = file_name
+        .strip_prefix(DRAFT_PREFIX)?
+        .parse::<ArtifactName>()
+        .ok()?;
+    Some(name.artifact_id())
+}
+
 const FRONT_MATTER_OPENING: &[u8] = b"+++\n";
 const FRONT_MATTER_CLOSING: &[u8] = b"\n+++\n";
 

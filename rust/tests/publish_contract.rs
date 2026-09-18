@@ -108,7 +108,7 @@ fn publish_installs_exact_bytes_and_sidecar_then_validates() {
     let draft = fixture.prepare(&text);
     let mut standard_output = Vec::new();
 
-    let published = publish(&fixture.case, &draft, &mut standard_output)
+    let published = publish(&fixture.case, &draft, &mut standard_output, &mut Vec::new())
         .expect("prepared draft should publish");
     let name = "001-test-plan-codex-a1b2c3.md";
     let expected = fixture.resolved().join(name);
@@ -161,7 +161,7 @@ fn publish_rejects_an_existing_final_or_sidecar_without_changes() {
             .expect("occupied path should be written");
         let before = directory_bytes(&fixture.case);
 
-        let error = publish(&fixture.case, &draft, &mut Vec::new())
+        let error = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
             .expect_err("occupied publication path should fail");
 
         assert_eq!(
@@ -185,7 +185,7 @@ fn failed_exclusive_sidecar_create_does_not_delete_a_dangling_symlink() {
     symlink(&missing_target, &sidecar).expect("dangling sidecar symlink should be created");
 
     assert!(!sidecar.exists());
-    let error = publish(&fixture.case, &draft, &mut Vec::new())
+    let error = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
         .expect_err("exclusive sidecar creation should lose to the symlink");
 
     assert!(matches!(
@@ -213,7 +213,7 @@ fn failed_link_preserves_a_dangling_final_symlink_and_removes_our_sidecar() {
     symlink(&missing_target, &final_path).expect("dangling final symlink should be created");
 
     assert!(!final_path.exists());
-    let error = publish(&fixture.case, &draft, &mut Vec::new())
+    let error = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
         .expect_err("hard link should lose to the symlink");
 
     assert!(matches!(
@@ -259,7 +259,7 @@ fn malformed_prepared_artifacts_include_the_exact_draft_hint() {
         fixture.write_manifest();
         let draft = fixture.prepare(&text);
 
-        let error = publish(&fixture.case, &draft, &mut Vec::new())
+        let error = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
             .expect_err("malformed prepared artifact should fail");
         let expected_hint = format!(
             "hint: agents-work draft {} --kind {kind} --author {author} generates valid front matter",
@@ -282,7 +282,7 @@ fn missing_relationship_has_no_draft_hint_and_writes_nothing() {
     let draft = fixture.prepare(&artifact(&[missing]));
     let before = directory_bytes(&fixture.case);
 
-    let error = publish(&fixture.case, &draft, &mut Vec::new())
+    let error = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
         .expect_err("missing relationship should fail");
 
     assert_eq!(
@@ -298,7 +298,7 @@ fn missing_manifest_is_reported_before_a_missing_draft() {
     let fixture = TemporaryCase::new("missing-inputs");
     let draft = fixture.root.join("missing.md");
 
-    let missing_manifest = publish(&fixture.case, &draft, &mut Vec::new())
+    let missing_manifest = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
         .expect_err("manifest check should run first");
     assert_eq!(
         missing_manifest.to_string(),
@@ -306,7 +306,7 @@ fn missing_manifest_is_reported_before_a_missing_draft() {
     );
 
     fixture.write_manifest();
-    let missing_draft = publish(&fixture.case, &draft, &mut Vec::new())
+    let missing_draft = publish(&fixture.case, &draft, &mut Vec::new(), &mut Vec::new())
         .expect_err("missing draft should fail after manifest exists");
     assert_eq!(
         missing_draft.to_string(),
@@ -445,6 +445,69 @@ fn failed_exclusive_create_has_the_same_ownership_as_python() {
     );
     assert_no_temporary_artifact(&rust_fixture.case);
     assert_no_temporary_artifact(&python_fixture.case);
+}
+
+/// Drafts in the case directory, and whether publish should remove each one.
+const IN_CASE_DRAFTS: [(&str, bool); 4] = [
+    (".draft-001-test-plan-codex-a1b2c3.md", true),
+    // Drafted under the case-id topic, then renamed before publishing.
+    (".draft-001-test-case-codex-a1b2c3.md", true),
+    (".draft-009.md", false),
+    (".draft-001-test-plan-codex-ffffff.md", false),
+];
+
+#[test]
+fn publish_removes_only_the_draft_it_generated() {
+    for (name, removed) in IN_CASE_DRAFTS {
+        let fixture = TemporaryCase::new("draft-removal");
+        fixture.write_manifest();
+        let draft = fixture.case.join(name);
+        fs::write(&draft, artifact(&[])).expect("in-case draft should be written");
+        let mut standard_error = Vec::new();
+
+        publish(&fixture.case, &draft, &mut Vec::new(), &mut standard_error)
+            .expect("in-case draft should publish");
+
+        assert_eq!(draft.exists(), !removed, "{name}");
+        assert!(standard_error.is_empty(), "{name}");
+        assert!(
+            validate_case(&fixture.case)
+                .expect("published case should be traversable")
+                .is_valid(),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires AGENTS_WORK_PYTHON_REFERENCE"]
+fn draft_removal_matches_the_python_reference() {
+    for (name, _) in IN_CASE_DRAFTS {
+        let python_fixture = TemporaryCase::new("oracle-python-draft-removal");
+        let rust_fixture = TemporaryCase::new("oracle-rust-draft-removal");
+        python_fixture.write_manifest();
+        rust_fixture.write_manifest();
+        let python_draft = python_fixture.case.join(name);
+        let rust_draft = rust_fixture.case.join(name);
+        fs::write(&python_draft, artifact(&[])).expect("Python draft should be written");
+        fs::write(&rust_draft, artifact(&[])).expect("Rust draft should be written");
+
+        let python = run_python_publish(&python_fixture.case, &python_draft);
+        let rust = run_rust_publish(&rust_fixture.case, &rust_draft);
+
+        assert_eq!(rust.status.code(), python.status.code(), "{name}");
+        assert_eq!(rust.stderr, python.stderr, "{name}");
+        assert_eq!(
+            normalize_case(&rust.stdout, &rust_fixture.resolved()),
+            normalize_case(&python.stdout, &python_fixture.resolved()),
+            "{name}"
+        );
+        assert_eq!(
+            directory_bytes(&rust_fixture.case),
+            directory_bytes(&python_fixture.case),
+            "{name}"
+        );
+    }
 }
 
 #[derive(Clone, Copy)]

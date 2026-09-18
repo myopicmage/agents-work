@@ -96,6 +96,14 @@ sidecar, and publishes the Markdown last. Publication is no-clobber. It
 generates no replacement content and never overwrites an existing artifact or
 sidecar.
 
+Once the artifact and sidecar are durable, publishing removes the draft if
+`draft` generated it: a `.draft-` file directly in the case directory whose
+name is a valid artifact filename carrying the published artifact ID. The
+topic in that name may differ, since authors edit it after drafting. Any other
+draft path, including an `--output` path or a hand-named file, is left alone.
+Failing to remove the draft prints a warning and still exits successfully,
+because the artifact is already committed.
+
 Artifacts are append-only. Never edit or replace another agent's artifact. A
 revised plan is a new artifact that names what it supersedes, not an overwrite.
 

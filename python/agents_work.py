@@ -63,6 +63,10 @@ OPTIONAL_STRING_FIELDS = frozenset(OPTIONAL_FIELD_ORDER)
 # reach the append-only record.
 TITLE_PLACEHOLDER = b"# TITLE"
 
+# The prefix `draft` puts on its default output. Publishing removes a draft
+# only when it carries this shape, so a file the author named is never deleted.
+DRAFT_PREFIX = ".draft-"
+
 
 class ValidationFailure(Exception):
     pass
@@ -539,7 +543,7 @@ def draft(
     draft_path = (
         output.expanduser().resolve()
         if output is not None
-        else case / f".draft-{filename}"
+        else case / f"{DRAFT_PREFIX}{filename}"
     )
 
     # Prove the skeleton is publishable before writing it, so a draft can only
@@ -567,6 +571,34 @@ def fsync_directory(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def is_generated_draft(draft: Path, case: Path, artifact_id: str) -> bool:
+    """Recognize the file `draft` wrote by default for this artifact.
+
+    The topic in the name may differ from the published one, because authors
+    edit it after drafting; the artifact ID is what ties the two together.
+    """
+    if draft.parent != case or not draft.name.startswith(DRAFT_PREFIX):
+        return False
+
+    match = ARTIFACT_PATTERN.fullmatch(draft.name[len(DRAFT_PREFIX) :])
+    return match is not None and match.group("artifact_id") == artifact_id
+
+
+def remove_generated_draft(draft: Path, case: Path) -> None:
+    # The artifact is already durable, so a failure here is a warning rather
+    # than an error: reporting failure would invite a retry that can only hit
+    # no-clobber.
+    try:
+        draft.unlink(missing_ok=True)
+        fsync_directory(case)
+    except OSError as error:
+        print(
+            f"warning: {draft}: published, but the draft was not removed: "
+            f"{error.strerror}",
+            file=sys.stderr,
+        )
 
 
 def publish(case: Path, draft: Path) -> Path:
@@ -628,6 +660,9 @@ def publish(case: Path, draft: Path) -> Path:
             raise
     finally:
         temporary_path.unlink(missing_ok=True)
+
+    if is_generated_draft(draft, case, metadata["artifact_id"]):
+        remove_generated_draft(draft, case)
 
     print(final_path)
     return final_path

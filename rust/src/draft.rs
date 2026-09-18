@@ -8,8 +8,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::artifact::{
-    ArtifactId, ArtifactKind, ArtifactMetadata, ArtifactName, OffsetDateTime, Sequence, Slug,
-    TITLE_PLACEHOLDER, parse_front_matter,
+    ArtifactId, ArtifactKind, ArtifactMetadata, ArtifactName, DRAFT_PREFIX, OffsetDateTime,
+    Sequence, Slug, TITLE_PLACEHOLDER, parse_front_matter,
 };
 use crate::case::{create_new_file, discovered_artifacts, path_error, read_manifest, resolve_path};
 
@@ -212,7 +212,7 @@ pub fn draft_with(
     })?;
     let draft_path = match request.output {
         Some(output) => resolve_path(output)?,
-        None => case.join(format!(".draft-{}", document.filename())),
+        None => case.join(format!("{DRAFT_PREFIX}{}", document.filename())),
     };
     let mut file = create_new(&draft_path)?;
     file.write_all(document.body().as_bytes())

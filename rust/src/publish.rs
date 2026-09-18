@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use toml::Table;
 
 use crate::artifact::{
-    ArtifactKind, ArtifactMetadata, Slug, TITLE_PLACEHOLDER, front_matter_body,
-    has_title_placeholder, parse_front_matter,
+    ArtifactId, ArtifactKind, ArtifactMetadata, Slug, TITLE_PLACEHOLDER, front_matter_body,
+    generated_draft_id, has_title_placeholder, parse_front_matter,
 };
 use crate::case::{
     create_new_file, discovered_artifacts, path_error, remove_if_exists, resolve_path,
@@ -53,6 +53,9 @@ impl From<io::Error> for PublishError {
 
 /// Publishes a prepared Markdown artifact without replacing existing work.
 ///
+/// A draft that `draft` generated for this artifact is removed once the
+/// artifact is durable; failing to remove it is a warning, not an error.
+///
 /// # Errors
 ///
 /// Returns an error when the case or draft is missing, prepared metadata is
@@ -62,11 +65,13 @@ pub fn publish(
     case: &Path,
     draft: &Path,
     standard_output: &mut impl Write,
+    standard_error: &mut impl Write,
 ) -> Result<PathBuf, PublishError> {
     publish_with(
         case,
         draft,
         standard_output,
+        standard_error,
         |temporary, final_path| fs::hard_link(temporary, final_path),
         sync_directory,
     )
@@ -76,8 +81,9 @@ fn publish_with(
     case: &Path,
     draft: &Path,
     standard_output: &mut impl Write,
+    standard_error: &mut impl Write,
     linker: impl FnOnce(&Path, &Path) -> io::Result<()>,
-    directory_sync: impl FnOnce(&Path) -> io::Result<()>,
+    mut directory_sync: impl FnMut(&Path) -> io::Result<()>,
 ) -> Result<PathBuf, PublishError> {
     let case = resolve_path(case)?;
     let draft = resolve_path(draft)?;
@@ -124,7 +130,7 @@ fn publish_with(
             final_path: &final_path,
         },
         linker,
-        directory_sync,
+        &mut directory_sync,
     );
     let cleanup = remove_if_exists(&temporary_path);
 
@@ -133,8 +139,45 @@ fn publish_with(
     }
 
     publication?;
+
+    if is_generated_draft(&draft, &case, metadata.artifact_id) {
+        remove_generated_draft(&draft, &case, directory_sync, standard_error);
+    }
+
     writeln!(standard_output, "{}", final_path.display())?;
     Ok(final_path)
+}
+
+fn is_generated_draft(draft: &Path, case: &Path, artifact_id: ArtifactId) -> bool {
+    draft.parent() == Some(case)
+        && draft
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(generated_draft_id)
+            == Some(artifact_id)
+}
+
+// The artifact is already durable, so a failure here is a warning rather than
+// an error: reporting failure would invite a retry that can only hit
+// no-clobber.
+fn remove_generated_draft(
+    draft: &Path,
+    case: &Path,
+    directory_sync: impl FnOnce(&Path) -> io::Result<()>,
+    standard_error: &mut impl Write,
+) {
+    let removal = match fs::remove_file(draft) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+        _ => directory_sync(case),
+    };
+
+    if let Err(error) = removal {
+        let _ = writeln!(
+            standard_error,
+            "warning: {}: published, but the draft was not removed: {error}",
+            draft.display()
+        );
+    }
 }
 
 fn validate_prepared_artifact(draft: &Path, case: &Path) -> Result<ArtifactMetadata, PublishError> {
@@ -212,7 +255,7 @@ struct Publication<'a> {
 fn install_temporary(
     publication: Publication<'_>,
     linker: impl FnOnce(&Path, &Path) -> io::Result<()>,
-    directory_sync: impl FnOnce(&Path) -> io::Result<()>,
+    directory_sync: &mut impl FnMut(&Path) -> io::Result<()>,
 ) -> Result<(), PublishError> {
     let Publication {
         case,
@@ -329,6 +372,7 @@ mod tests {
     use super::{publish_with, shell_quote};
 
     static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
+    const GENERATED_DRAFT: &str = ".draft-001-test-plan-codex-a1b2c3.md";
 
     struct Fixture {
         root: PathBuf,
@@ -349,6 +393,12 @@ mod tests {
             fs::write(case.join("work.toml"), manifest()).expect("manifest should be written");
             fs::write(&draft, artifact()).expect("draft should be written");
             Self { root, case, draft }
+        }
+
+        fn generated_draft(&self) -> PathBuf {
+            let draft = self.case.join(GENERATED_DRAFT);
+            fs::write(&draft, artifact()).expect("generated draft should be written");
+            draft
         }
 
         fn final_path(&self) -> PathBuf {
@@ -380,6 +430,7 @@ mod tests {
             &fixture.case,
             &fixture.draft,
             &mut standard_output,
+            &mut Vec::new(),
             |_temporary, _final_path| {
                 Err(io::Error::new(
                     io::ErrorKind::PermissionDenied,
@@ -410,6 +461,7 @@ mod tests {
             &fixture.case,
             &fixture.draft,
             &mut standard_output,
+            &mut Vec::new(),
             |temporary, final_path| fs::hard_link(temporary, final_path),
             |_case| Err(io::Error::other("injected directory sync failure")),
         )
@@ -430,6 +482,66 @@ mod tests {
         assert_no_temporary_artifact(&fixture.case);
         assert!(fixture.draft.is_file());
         assert!(standard_output.is_empty());
+    }
+
+    #[test]
+    fn directory_sync_failure_keeps_a_generated_draft() {
+        let fixture = Fixture::new("directory-sync-failure-generated");
+        let draft = fixture.generated_draft();
+
+        publish_with(
+            &fixture.case,
+            &draft,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            |temporary, final_path| fs::hard_link(temporary, final_path),
+            |_case| Err(io::Error::other("injected directory sync failure")),
+        )
+        .expect_err("injected directory sync failure should escape");
+
+        assert!(fixture.final_path().is_file());
+        assert!(draft.is_file());
+    }
+
+    #[test]
+    fn draft_removal_failure_is_a_warning_after_publishing() {
+        let fixture = Fixture::new("draft-removal-failure");
+        let draft = fixture.generated_draft();
+        let mut standard_output = Vec::new();
+        let mut standard_error = Vec::new();
+        let mut syncs = 0;
+
+        let published = publish_with(
+            &fixture.case,
+            &draft,
+            &mut standard_output,
+            &mut standard_error,
+            |temporary, final_path| fs::hard_link(temporary, final_path),
+            |_case| {
+                syncs += 1;
+
+                if syncs == 1 {
+                    return Ok(());
+                }
+
+                Err(io::Error::other("injected draft sync failure"))
+            },
+        )
+        .expect("publication should succeed despite the draft warning");
+
+        assert_eq!(published, fixture.final_path());
+        assert_eq!(
+            String::from_utf8(standard_error).expect("warning should be UTF-8"),
+            format!(
+                "warning: {}: published, but the draft was not removed: \
+                 injected draft sync failure\n",
+                fixture.resolved_case().join(GENERATED_DRAFT).display()
+            )
+        );
+        assert_eq!(
+            String::from_utf8(standard_output).expect("output should be UTF-8"),
+            format!("{}\n", fixture.final_path().display())
+        );
     }
 
     #[test]

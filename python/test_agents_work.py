@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("agents_work.py")
@@ -237,6 +240,85 @@ class AgentsWorkTests(unittest.TestCase):
 
         agents_work.publish(self.case, self.prepare(text))
 
+        self.assertTrue(agents_work.validate_case(self.case))
+
+    def test_publish_removes_the_draft_it_generated(self) -> None:
+        drafted = self.title_draft(
+            agents_work.draft(self.case, kind="review", author="claude")
+        )
+
+        published = agents_work.publish(self.case, drafted)
+
+        self.assertFalse(drafted.exists())
+        self.assertEqual(
+            [published.name, f"{published.name}.sha256", "work.toml"],
+            sorted(path.name for path in self.case.iterdir()),
+        )
+
+    def test_publish_removes_a_generated_draft_whose_topic_was_edited(self) -> None:
+        drafted = self.title_draft(
+            agents_work.draft(self.case, kind="review", author="claude")
+        )
+        drafted.write_text(
+            drafted.read_text(encoding="utf-8").replace(
+                'topic = "test-case"', 'topic = "renamed"'
+            ),
+            encoding="utf-8",
+        )
+
+        published = agents_work.publish(self.case, drafted)
+
+        self.assertTrue(published.name.startswith("001-renamed-claude-"))
+        self.assertFalse(drafted.exists())
+
+    def test_publish_keeps_a_draft_outside_the_case(self) -> None:
+        draft = self.prepare()
+
+        agents_work.publish(self.case, draft)
+
+        self.assertTrue(draft.exists())
+
+    def test_publish_keeps_a_hand_named_draft_in_the_case(self) -> None:
+        draft = self.case / ".draft-009.md"
+        draft.write_text(artifact_text(), encoding="utf-8")
+
+        agents_work.publish(self.case, draft)
+
+        self.assertTrue(draft.exists())
+
+    def test_publish_keeps_a_generated_draft_for_another_artifact(self) -> None:
+        draft = self.case / ".draft-001-test-plan-codex-ffffff.md"
+        draft.write_text(artifact_text(), encoding="utf-8")
+
+        agents_work.publish(self.case, draft)
+
+        self.assertTrue(draft.exists())
+
+    def test_draft_removal_failure_is_a_warning_after_publishing(self) -> None:
+        drafted = self.title_draft(
+            agents_work.draft(self.case, kind="review", author="claude")
+        )
+        standard_error = io.StringIO()
+
+        with (
+            mock.patch.object(
+                agents_work,
+                "fsync_directory",
+                side_effect=[None, PermissionError(13, "Permission denied")],
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(standard_error),
+        ):
+            status = agents_work.main(
+                ["publish", str(self.case), str(drafted)]
+            )
+
+        self.assertEqual(0, status)
+        self.assertEqual(
+            f"warning: {drafted.resolve()}: published, but the draft was not "
+            "removed: Permission denied\n",
+            standard_error.getvalue(),
+        )
         self.assertTrue(agents_work.validate_case(self.case))
 
     def test_draft_sequence_follows_the_existing_inventory(self) -> None:
