@@ -311,6 +311,40 @@ what a reviewer approved. It never advances on submitting work for review,
 and an agent never advances it for its own review. Write it with
 `agents-work cursor --reviewed-commit`.
 
+### Branch-based review
+
+A code review targets a branch, not a hand-copied commit. The author names the
+target by setting `implementation_branch` to the local branch name (not a full
+ref or revision expression) in the same `cursor` command that hands off the
+review.
+
+The reviewer captures the branch tip once, at the start, with a lookup that
+only matches a local branch:
+
+```sh
+commit=$(git -C "$repository_path" rev-parse --verify \
+  "refs/heads/${implementation_branch}^{commit}") || exit 1
+```
+
+A bare `rev-parse <branch>` is not enough: when a tag shares the branch's name,
+it warns and resolves the tag. If `implementation_branch` is empty or does not
+resolve, ask for the handoff context; never fall back to `HEAD`.
+
+Review that commit's committed tree and diff, not a checkout that may move or
+carry uncommitted files. Record the captured value, never a retyped one, in
+both the review artifact's `subject_commit` and
+`agents-work cursor --reviewed-commit "$commit"`.
+
+Linked worktrees share local branch refs, so the lookup sees the latest local
+tip from any worktree. A remote push does not update local refs. When the
+subject is a remote pull request, check its current source state and update or
+select the matching local branch before capturing. The tool never fetches or
+synchronizes.
+
+If the branch advances during the review, the review still covers the captured
+commit. Later commits show as unreviewed by comparing `reviewed_commit` to the
+branch tip.
+
 The phases are:
 
 - `planning`;
@@ -321,13 +355,27 @@ The phases are:
 The statuses are:
 
 - active: `drafting`, `awaiting_review`, `revision_requested`;
-- resting: `ready_for_implementation`, `deferred`, `complete`.
+- resting: `ready_for_implementation`, `awaiting_decision`, `deferred`,
+  `complete`.
 
 An active status requires a non-empty `next_agent`. A resting status means no
 agent may act until the human coordinator instructs.
-`ready_for_implementation` and `deferred` may name the agent responsible for
-resuming when that instruction arrives; `complete` requires `next_agent` to
-be empty.
+`ready_for_implementation`, `awaiting_decision` and `deferred` may name the
+agent responsible for resuming when that instruction arrives; `complete`
+requires `next_agent` to be empty.
+
+Choose among the open resting statuses by the decision actually pending, not by
+wording such as "authorize":
+
+- `ready_for_implementation`: the human coordinator has settled the direction
+  and only a go instruction remains.
+- `awaiting_decision`: the human coordinator is still choosing something, and
+  `requested_action` names it, for example "Decide whether to merge the
+  reviewed branch." This includes whether to pursue proposed work at all.
+  Agents agreeing on a plan does not establish the coordinator's decision.
+- `deferred`: parked; no decision is being requested.
+
+None of them authorizes action.
 
 `agents-work cursor` enforces all of this before writing, which makes it the
 preferred way to move the cursor: the rules live in the same code that
@@ -341,14 +389,25 @@ converged or an implementation stop has reached its gate. A named `next_agent`
 records who resumes; it is not permission to resume. Artifact presence is
 never an instruction to act.
 
+Each kind of fact has one home:
+
+- the cursor routes: `requested_action` says what happens next, such as
+  "Address review 002" or "Await the coordinator's merge decision";
+- artifacts preserve dated evidence, including the commit a review read;
+- Git, pull request and deployment systems hold current branch, merge and
+  deployment state, checked when a requested action depends on it.
+
+The cursor is not a cache of remote state. A fact such as where a remote branch
+points is stale the moment it is written there.
+
 `work.toml` is authoritative for the current recorded coordination state, but
 it may be stale after concurrent work. Artifacts and the coordinator's latest
 instruction are never discarded to make the cursor look consistent.
 
 The cursor invariant detects an active status without an owner, a complete
 status with an owner, and invalid phase/status combinations. It cannot tell a
-deliberately retained owner from a stale owner on `ready_for_implementation` or
-`deferred`, nor detect a complete valid-to-valid cursor overwrite. The cursor
+deliberately retained owner from a stale owner on `ready_for_implementation`,
+`awaiting_decision` or `deferred`, nor detect a complete valid-to-valid cursor overwrite. The cursor
 command clears ownership by default when entering a resting status; durable
 decision artifacts expose semantic conflicts that structural validation cannot.
 

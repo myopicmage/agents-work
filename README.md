@@ -221,6 +221,14 @@ agents-work cursor "$workspace/example-project/auth-redesign" \
   --action "Review the proposed authentication design."
 ```
 
+Stop at a human decision without assigning anyone to act:
+
+```sh
+agents-work cursor "$workspace/example-project/auth-redesign" \
+  --status awaiting_decision \
+  --action "Decide whether to merge the reviewed branch."
+```
+
 The draft filename includes a random ID. Capturing the printed path avoids
 reconstructing it.
 
