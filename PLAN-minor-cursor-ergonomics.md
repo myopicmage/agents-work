@@ -166,5 +166,8 @@ plans 001, 003, 005 and 007 with reviews 002 and 006 and response 004.
 - Changed files match the implementation boundaries. `publish.rs`,
   `cursor.rs`, `main.rs` and `publish_contract.rs` are untouched.
 
+Reviewed by Codex at `aab52ad` (review 008, no actionable findings).
+Merged via myopicmage/agents-work#1 as merge commit `01a42da`.
+
 No deviations from the plan. Rollout, meaning updating installed binaries
 and the installed skill, is a separate step.
