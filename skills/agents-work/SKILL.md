@@ -55,6 +55,8 @@ Contribute only when the user actually requests work.
 
 1. Run `agents-work draft <case-directory> --kind <kind> --author <agent>`,
    adding `--responds-to` or `--supersedes` for artifacts actually considered.
+   The topic defaults to the one the referenced artifacts share, else the case
+   ID; pass `--topic` when the artifact starts a new thread.
 2. Edit the generated body, replacing the `# TITLE` placeholder line rather
    than writing below it; `publish` refuses a body that still contains it.
    Leave generated front matter unchanged except for relevant optional

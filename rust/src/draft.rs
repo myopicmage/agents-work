@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -193,13 +193,20 @@ pub fn draft_with(
             case.display()
         )));
     };
-    let topic = resolve_topic(request.topic, manifest.table())?;
+    let responds_to = resolve_case_references(&case, request.responds_to)?;
+    let supersedes = resolve_case_references(&case, request.supersedes)?;
+    let inherited = match request.topic {
+        Some(_) => None,
+        None => inherited_topic(&case, responds_to.iter().chain(&supersedes))?,
+    };
+    let topic = match inherited {
+        Some(topic) => topic,
+        None => resolve_topic(request.topic, manifest.table())?,
+    };
     let artifact_id = unused_artifact_id(&case, &mut next_artifact_id)?;
     let sequence = next_sequence(&artifact_names(&case)?)
         .map_err(|error| DraftError::validation(error.to_string()))?;
     let created_at = clock()?;
-    let responds_to = resolve_case_references(&case, request.responds_to)?;
-    let supersedes = resolve_case_references(&case, request.supersedes)?;
     let document = DraftDocument::build(DraftInputs {
         artifact_id,
         sequence,
@@ -279,6 +286,44 @@ pub fn resolve_reference(
                 .join(", ")
         ))),
     }
+}
+
+const INHERITED_TOPIC_HINT: &str = "hint: without --topic, draft inherits the topic the \
+     referenced artifacts share; pass --topic to choose one";
+
+/// Returns the one topic every referenced artifact shares, if there is one.
+///
+/// A response usually continues its target's thread, so its filename should
+/// carry the same topic. Several distinct topics, or none, give no answer and
+/// the caller falls back to the case ID.
+fn inherited_topic<'a>(
+    case: &Path,
+    references: impl IntoIterator<Item = &'a ArtifactName>,
+) -> Result<Option<Slug>, DraftError> {
+    let mut topics = BTreeSet::new();
+
+    for name in references {
+        let path = case.join(name.as_str());
+        let data = fs::read(&path).map_err(|error| path_error(&path, &error))?;
+        let table = parse_front_matter(&data, &path)
+            .map_err(|error| DraftError::validation(format!("{error}\n{INHERITED_TOPIC_HINT}")))?;
+        let topic = table
+            .get("topic")
+            .and_then(toml::Value::as_str)
+            .and_then(|value| value.parse::<Slug>().ok())
+            .ok_or_else(|| {
+                DraftError::validation(format!(
+                    "{name}: topic must be a lowercase slug\n{INHERITED_TOPIC_HINT}"
+                ))
+            })?;
+        topics.insert(topic);
+    }
+
+    if topics.len() == 1 {
+        return Ok(topics.pop_first());
+    }
+
+    Ok(None)
 }
 
 fn resolve_topic(topic: Option<&str>, manifest: &toml::Table) -> Result<Slug, DraftError> {

@@ -84,6 +84,13 @@ bare sequence number, and may be repeated or given several values at once. A
 sequence number that matches more than one artifact is an error rather than a
 guess, because concurrent writers may legally share one.
 
+Without `--topic`, the draft inherits the topic when every artifact it
+responds to or supersedes shares exactly one, since a response usually
+continues its target's thread. Otherwise, including when it references
+nothing, the topic is the case ID. Pass `--topic` whenever the artifact starts
+a new thread; it also skips reading the referenced artifacts, so a malformed
+target cannot block the draft.
+
 Hand-writing the front matter still works, under any temporary name that does
 not match the discovery pattern. `draft` exists because the sequence, the
 artifact ID, the timestamp and the exact field set are all constraints stated

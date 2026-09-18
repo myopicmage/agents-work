@@ -496,6 +496,38 @@ def render_front_matter(metadata: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+INHERITED_TOPIC_HINT = (
+    "hint: without --topic, draft inherits the topic the referenced artifacts "
+    "share; pass --topic to choose one"
+)
+
+
+def inherited_topic(case: Path, references: list[str]) -> str | None:
+    """Return the one topic every referenced artifact shares, if there is one.
+
+    A response usually continues its target's thread, so its filename should
+    carry the same topic. Several distinct topics, or none, give no answer and
+    the caller falls back to the case ID.
+    """
+    topics = set()
+    for name in references:
+        path = case / name
+        try:
+            metadata = parse_front_matter(path.read_bytes(), path)
+        except ValidationFailure as error:
+            raise ValidationFailure(f"{error}\n{INHERITED_TOPIC_HINT}") from error
+
+        topic = metadata.get("topic")
+        if not isinstance(topic, str) or not SLUG_PATTERN.fullmatch(topic):
+            raise ValidationFailure(
+                f"{name}: topic must be a lowercase slug\n{INHERITED_TOPIC_HINT}"
+            )
+
+        topics.add(topic)
+
+    return topics.pop() if len(topics) == 1 else None
+
+
 def draft(
     case: Path,
     *,
@@ -512,7 +544,20 @@ def draft(
     if manifest is None:
         raise ValidationFailure(f"{case}: missing or unreadable work.toml")
 
-    resolved_topic = topic if topic is not None else manifest.get("id")
+    resolved_responds_to = [
+        resolve_reference(reference, case) for reference in responds_to or []
+    ]
+    resolved_supersedes = [
+        resolve_reference(reference, case) for reference in supersedes or []
+    ]
+
+    resolved_topic = topic
+    if resolved_topic is None:
+        resolved_topic = inherited_topic(
+            case, resolved_responds_to + resolved_supersedes
+        )
+    if resolved_topic is None:
+        resolved_topic = manifest.get("id")
     if not isinstance(resolved_topic, str) or not SLUG_PATTERN.fullmatch(
         resolved_topic
     ):
@@ -529,13 +574,8 @@ def draft(
         "topic": resolved_topic,
         "author": author,
         "created_at": dt.datetime.now().astimezone().replace(microsecond=0),
-        "responds_to": [
-            resolve_reference(reference, case)
-            for reference in responds_to or []
-        ],
-        "supersedes": [
-            resolve_reference(reference, case) for reference in supersedes or []
-        ],
+        "responds_to": resolved_responds_to,
+        "supersedes": resolved_supersedes,
     }
     metadata.update({field: "" for field in OPTIONAL_FIELD_ORDER})
 
@@ -915,7 +955,9 @@ def build_parser() -> argparse.ArgumentParser:
     draft_parser.add_argument("--kind", required=True, choices=sorted(KINDS))
     draft_parser.add_argument("--author", required=True)
     draft_parser.add_argument(
-        "--topic", help="defaults to the work.toml id"
+        "--topic",
+        help="defaults to the one topic the referenced artifacts share, "
+        "otherwise the work.toml id",
     )
     # `extend`, so a repeated flag accumulates. The default action with
     # `nargs="*"` silently keeps only the last occurrence, which discards a

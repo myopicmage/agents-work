@@ -321,6 +321,65 @@ class AgentsWorkTests(unittest.TestCase):
         )
         self.assertTrue(agents_work.validate_case(self.case))
 
+    def drafted_topic(self, **options: object) -> str:
+        drafted = agents_work.draft(
+            self.case, kind="review", author="claude", **options
+        )
+        return agents_work.parse_front_matter(drafted.read_bytes(), drafted)[
+            "topic"
+        ]
+
+    def test_draft_inherits_the_topic_of_its_references(self) -> None:
+        agents_work.publish(self.case, self.prepare())
+        agents_work.publish(
+            self.case,
+            self.prepare(artifact_text(artifact_id="d4e5f6", sequence=2)),
+        )
+
+        self.assertEqual(
+            "test-plan",
+            self.drafted_topic(responds_to=["1"], supersedes=["2"]),
+        )
+
+    def test_draft_falls_back_to_the_case_id_for_mixed_topics(self) -> None:
+        agents_work.publish(self.case, self.prepare())
+        agents_work.publish(
+            self.case,
+            self.prepare(
+                artifact_text(artifact_id="d4e5f6", sequence=2, topic="other")
+            ),
+        )
+
+        self.assertEqual("test-case", self.drafted_topic(responds_to=["1", "2"]))
+
+    def test_an_explicit_topic_overrides_inheritance(self) -> None:
+        agents_work.publish(self.case, self.prepare())
+
+        self.assertEqual(
+            "chosen", self.drafted_topic(topic="chosen", responds_to=["1"])
+        )
+
+    def test_draft_explains_an_uninheritable_topic(self) -> None:
+        target = self.case / "001-test-plan-codex-a1b2c3.md"
+        target.write_text(
+            artifact_text().replace('topic = "test-plan"', 'topic = "Not Slug"'),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(agents_work.ValidationFailure) as raised:
+            agents_work.draft(
+                self.case, kind="review", author="claude", responds_to=["1"]
+            )
+
+        self.assertEqual(
+            f"{target.name}: topic must be a lowercase slug\n"
+            f"{agents_work.INHERITED_TOPIC_HINT}",
+            str(raised.exception),
+        )
+        self.assertEqual(
+            "chosen", self.drafted_topic(topic="chosen", responds_to=["1"])
+        )
+
     def test_draft_sequence_follows_the_existing_inventory(self) -> None:
         agents_work.publish(self.case, self.prepare())
 
